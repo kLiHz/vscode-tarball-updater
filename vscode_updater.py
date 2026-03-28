@@ -33,15 +33,32 @@ def download_resumable(url, dest, silent=False):
         raise Exception(f"curl exited with code {result.returncode}")
 
 def fetch_api(url):
-    """Fetches JSON from the API using curl."""
-    result = subprocess.run(["curl", "-s", "-L", url], capture_output=True, text=True)
+    """Fetches JSON from the API using curl and explicitly checks the HTTP status code."""
+    # -w "%{http_code}" appends the status code to the end of the stdout
+    cmd = ["curl", "-s", "-L", "-w", "%{http_code}", url]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
     if result.returncode != 0:
         raise Exception(f"curl failed with code {result.returncode}")
     
-    if not result.stdout.strip():
-        return None, 204 # Empty response implies no update
+    # Extract the HTTP status code from the last 3 characters
+    output = result.stdout
+    if len(output) < 3:
+        raise Exception("Invalid response from curl")
         
-    return json.loads(result.stdout), 200
+    status_code = output[-3:]
+    body = output[:-3].strip()
+    
+    if status_code == "204":
+        return None, 204
+        
+    if status_code != "200":
+        raise Exception(f"API returned HTTP {status_code}")
+        
+    if not body:
+        raise Exception("API returned 200 but body is empty")
+        
+    return json.loads(body), 200
 
 # ==========================================
 # Main Update Logic
