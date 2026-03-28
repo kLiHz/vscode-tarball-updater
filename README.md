@@ -41,9 +41,15 @@ This single Python script (`vscode_updater.py`) perfectly translates the Windows
 Move this `vscode-tarball-updater` directory to wherever you want your portable VS Code installation to live (e.g., `~/.local/share/vscode-updater`).
 
 ### 2. Initial Setup / Launch
-Run the script for the first time. It will download the latest version and launch VS Code:
+Run the script for the first time. It will download the latest stable version and launch VS Code:
 ```bash
 ./vscode_updater.py
+```
+
+**Using the Insider Build:**
+If you prefer the bleeding-edge "Insider" build, simply pass the `--insider` flag. The script will automatically maintain separate folders, downloads, and symlinks (`code-insider`) so you can run both Stable and Insider side-by-side without conflicts!
+```bash
+./vscode_updater.py --insider
 ```
 
 ### 3. Desktop Integration

@@ -8,14 +8,22 @@ import subprocess
 import time
 import platform
 
+# Parse CLI arguments early to configure globals
+args = sys.argv[1:]
+is_insider = "--insider" in args
+QUALITY = "insider" if is_insider else "stable"
+
+# Remove our custom arguments so they don't get passed to the real VS Code process
+launch_args = [a for a in args if a not in ("--insider", "--update-now", "--background-daemon")]
+
 # ==========================================
 # Configuration
 # ==========================================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.join(SCRIPT_DIR, "vscode-versions")
-DOWNLOAD_DIR = os.path.join(SCRIPT_DIR, "vscode-downloads")
-SYMLINK_PATH = os.path.join(SCRIPT_DIR, "code-stable")
-LOCK_FILE = os.path.join(SCRIPT_DIR, ".vscode-updater.lock")
+BASE_DIR = os.path.join(SCRIPT_DIR, f"vscode-versions-{QUALITY}")
+DOWNLOAD_DIR = os.path.join(SCRIPT_DIR, f"vscode-downloads-{QUALITY}")
+SYMLINK_PATH = os.path.join(SCRIPT_DIR, f"code-{QUALITY}")
+LOCK_FILE = os.path.join(SCRIPT_DIR, f".vscode-updater-{QUALITY}.lock")
 
 # ==========================================
 # Helper: Get Architecture
@@ -111,7 +119,7 @@ def run_update(silent=False):
         log(f"Error: {e}")
         return
 
-    api_url = f"https://update.code.visualstudio.com/api/update/linux-{arch}/stable/{current_commit}"
+    api_url = f"https://update.code.visualstudio.com/api/update/linux-{arch}/{QUALITY}/{current_commit}"
     
     try:
         payload, status = fetch_api(api_url)
@@ -123,21 +131,25 @@ def run_update(silent=False):
         return
 
     download_url = payload.get("url")
-    version = payload.get("productVersion")
+    commit_hash = payload.get("version")
+    product_version = payload.get("productVersion")
 
-    if not download_url or not version:
+    if not download_url or not commit_hash or not product_version:
         log("Invalid API response.")
         return
 
-    target_dir = os.path.join(BASE_DIR, f"vscode-{version}")
+    # Use both product version and short commit hash for the directory name
+    # to perfectly handle insider builds where product version rarely changes
+    folder_name = f"vscode-{product_version}-{commit_hash[:8]}"
+    target_dir = os.path.join(BASE_DIR, folder_name)
 
     if os.path.exists(target_dir):
-        log(f"VS Code version {version} is already installed.")
+        log(f"VS Code version {folder_name} is already installed.")
         return
 
-    tar_file = os.path.join(DOWNLOAD_DIR, f"vscode-{version}.tar.gz")
+    tar_file = os.path.join(DOWNLOAD_DIR, f"{folder_name}.tar.gz")
     
-    log(f"Downloading VS Code {version}...")
+    log(f"Downloading VS Code {QUALITY} {product_version} ({commit_hash[:8]})...")
     try:
         download_resumable(download_url, tar_file)
     except Exception as e:
@@ -145,7 +157,7 @@ def run_update(silent=False):
         return
 
     log("Extracting to versioned folder...")
-    tmp_extract = os.path.join(BASE_DIR, f".extract-{version}")
+    tmp_extract = os.path.join(BASE_DIR, f".extract-{folder_name}")
     shutil.rmtree(tmp_extract, ignore_errors=True)
     os.makedirs(tmp_extract)
 
@@ -223,11 +235,12 @@ if __name__ == "__main__":
     )
 
     # Launch the actual application and replace this Python process
-    binary_path = os.path.join(SYMLINK_PATH, "bin", "code")
+    binary_name = "code-insiders" if QUALITY == "insider" else "code"
+    binary_path = os.path.join(SYMLINK_PATH, "bin", binary_name)
     if os.path.exists(binary_path):
         # os.execv replaces the current process. The Window Manager will 
         # see the Electron app taking over this PID, keeping WMClass intact.
-        os.execv(binary_path, [binary_path] + args)
+        os.execv(binary_path, [binary_path] + launch_args)
     else:
         print(f"Error: Could not find VS Code executable at {binary_path}", file=sys.stderr)
         sys.exit(1)
