@@ -18,8 +18,6 @@ DOWNLOAD_DIR = os.path.join(SCRIPT_DIR, "vscode-downloads")
 SYMLINK_PATH = os.path.join(SCRIPT_DIR, "code-stable")
 LOCK_FILE = os.path.join(SCRIPT_DIR, ".vscode-updater.lock")
 
-API_URL = "https://update.code.visualstudio.com/api/update/linux-x64/stable/VERSION"
-
 # ==========================================
 # Helper: Resumable Downloader (Pure Python)
 # ==========================================
@@ -59,9 +57,39 @@ def run_update(silent=False):
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     log("Checking for the latest VS Code version...")
+    
+    # 1. Read current commit hash (if installed)
+    current_commit = "0000000000000000000000000000000000000000" # Bogus hash forces latest download
+    product_json_path = os.path.join(SYMLINK_PATH, "resources", "app", "product.json")
+    if os.path.exists(product_json_path):
+        try:
+            with open(product_json_path, "r") as f:
+                product_data = json.load(f)
+                current_commit = product_data.get("commit", current_commit)
+        except Exception as e:
+            log(f"Warning: Could not read current version from {product_json_path}: {e}")
+
+    api_url = f"https://update.code.visualstudio.com/api/update/linux-x64/stable/{current_commit}"
+    
     try:
-        with urllib.request.urlopen(API_URL) as response:
-            payload = json.loads(response.read().decode('utf-8'))
+        req = urllib.request.Request(api_url)
+        with urllib.request.urlopen(req) as response:
+            if response.status == 204:
+                log("VS Code is already up to date.")
+                return
+            
+            payload_data = response.read().decode('utf-8')
+            if not payload_data:
+                log("VS Code is already up to date (Empty response).")
+                return
+                
+            payload = json.loads(payload_data)
+    except urllib.error.HTTPError as e:
+        if e.code == 204:
+            log("VS Code is already up to date.")
+            return
+        log(f"Failed to fetch API (HTTP {e.code}): {e}")
+        return
     except Exception as e:
         log(f"Failed to fetch API: {e}")
         return
