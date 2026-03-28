@@ -29,15 +29,15 @@ This single Python script (`vscode_updater.py`) perfectly translates the Windows
    When you run the script to launch VS Code, it does two things:
    - **Forks a Background Daemon:** It spawns a detached, silent copy of itself (`--background-daemon`) to check for and download updates while you work.
    - **Seamless Launching:** It instantly replaces its own process with the VS Code binary (`os.execv`). Your Window Manager sees the real Electron application start immediately. Grouping on your dock works perfectly.
-3. **Zero Configuration:** Because updates are checked when you launch the application (just like native VS Code), you don't need to configure `cron` jobs or `systemd` timers.
-4. **Pure Python Resumable Downloads:** The script uses Python's standard library to handle downloads. If your network drops, it will calculate the bytes downloaded and resume exactly where it left off on the next run.
+3. **Smart API Checking:** It reads your currently installed commit hash and queries the Microsoft API. If you are already on the latest version, the API returns an `HTTP 204 No Content` and the script silently exits.
+4. **Resumable Downloads (Proxy Aware):** The script calls `curl` under the hood. This guarantees flawless support for corporate `http_proxy`, `https_proxy`, and `all_proxy` (SOCKS5) environments. It natively resumes broken downloads if your network drops.
 5. **Atomic Swapping via Symlinks:** Updates are applied by downloading a new folder and then instantly swapping a symbolic link (`./code-stable`). Your currently running editor is untouched.
 6. **Garbage Collection:** Old version folders are silently cleaned up, keeping only the two most recent versions.
 
 ## Usage
 
 ### 1. Place the Directory
-Move this `vscode-tarball-updater` directory to wherever you want your portable VS Code installation to live (e.g., `~/.local/opt/vscode-updater`).
+Move this `vscode-tarball-updater` directory to wherever you want your portable VS Code installation to live (e.g., `~/.local/share/vscode-updater`).
 
 ### 2. Initial Setup / Launch
 Run the script for the first time. It will download the latest version and launch VS Code:
@@ -67,4 +67,5 @@ If you prefer to force an update visibly instead of waiting for the background d
 ```
 
 ## Requirements
-- Python 3.6+ (No external pip packages required, uses only the standard library)
+- Python 3.6+
+- `curl` (for download resumption and proxy support)

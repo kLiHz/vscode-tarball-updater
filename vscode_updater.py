@@ -4,8 +4,6 @@ import sys
 import json
 import shutil
 import tarfile
-import urllib.request
-import urllib.error
 import subprocess
 import time
 
@@ -19,31 +17,31 @@ SYMLINK_PATH = os.path.join(SCRIPT_DIR, "code-stable")
 LOCK_FILE = os.path.join(SCRIPT_DIR, ".vscode-updater.lock")
 
 # ==========================================
-# Helper: Resumable Downloader (Pure Python)
+# Helper: Resumable Downloader (via curl)
 # ==========================================
-def download_resumable(url, dest):
-    """Downloads a file, resuming from the existing file size if it exists."""
-    file_size = os.path.getsize(dest) if os.path.exists(dest) else 0
-    req = urllib.request.Request(url)
+def download_resumable(url, dest, silent=False):
+    """Downloads a file using curl, resuming from the existing file size if it exists."""
+    cmd = ["curl", "-L", "-C", "-", "-o", dest]
+    if silent:
+        cmd.append("-s")
+    else:
+        cmd.append("--progress-bar")
+    cmd.append(url)
     
-    if file_size > 0:
-        req.add_header("Range", f"bytes={file_size}-")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        raise Exception(f"curl exited with code {result.returncode}")
+
+def fetch_api(url):
+    """Fetches JSON from the API using curl."""
+    result = subprocess.run(["curl", "-s", "-L", url], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Exception(f"curl failed with code {result.returncode}")
+    
+    if not result.stdout.strip():
+        return None, 204 # Empty response implies no update
         
-    try:
-        with urllib.request.urlopen(req) as resp:
-            # If server supports resume, it returns 206 Partial Content. Otherwise 200.
-            mode = "ab" if resp.status == 206 else "wb"
-            with open(dest, mode) as f:
-                while True:
-                    chunk = resp.read(8192)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-    except urllib.error.HTTPError as e:
-        if e.code == 416:
-            # 416 Range Not Satisfiable means we already downloaded the whole file
-            return
-        raise e
+    return json.loads(result.stdout), 200
 
 # ==========================================
 # Main Update Logic
@@ -72,24 +70,10 @@ def run_update(silent=False):
     api_url = f"https://update.code.visualstudio.com/api/update/linux-x64/stable/{current_commit}"
     
     try:
-        req = urllib.request.Request(api_url)
-        with urllib.request.urlopen(req) as response:
-            if response.status == 204:
-                log("VS Code is already up to date.")
-                return
-            
-            payload_data = response.read().decode('utf-8')
-            if not payload_data:
-                log("VS Code is already up to date (Empty response).")
-                return
-                
-            payload = json.loads(payload_data)
-    except urllib.error.HTTPError as e:
-        if e.code == 204:
+        payload, status = fetch_api(api_url)
+        if status == 204 or not payload:
             log("VS Code is already up to date.")
             return
-        log(f"Failed to fetch API (HTTP {e.code}): {e}")
-        return
     except Exception as e:
         log(f"Failed to fetch API: {e}")
         return
