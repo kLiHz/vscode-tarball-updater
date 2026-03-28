@@ -151,7 +151,7 @@ def run_update(silent=False):
     
     log(f"Downloading VS Code {QUALITY} {product_version} ({commit_hash[:8]})...")
     try:
-        download_resumable(download_url, tar_file)
+        download_resumable(download_url, tar_file, silent=silent)
     except Exception as e:
         log(f"Download interrupted: {e}")
         return
