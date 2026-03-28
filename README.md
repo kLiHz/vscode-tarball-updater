@@ -48,13 +48,21 @@ Run the script for the first time. It will download the latest version and launc
 ### 3. Add to your Desktop (Optional)
 To use it like a normal application, point your Desktop Environment to the launcher.
 
-Create a file `~/.local/share/applications/code.desktop`:
+*Note: For strict sandboxed environments (like Flatpak task managers) to see the icon, it is highly recommended to copy the icon into your system's icon directory rather than referencing it via an absolute path.*
+
+First, copy the icon to your local share:
+```bash
+mkdir -p ~/.local/share/icons/hicolor/256x256/apps/
+cp /path/to/vscode-tarball-updater/code-stable/resources/app/resources/linux/code.png ~/.local/share/icons/hicolor/256x256/apps/vscode.png
+```
+
+Then, create the desktop entry `~/.local/share/applications/code.desktop`:
 ```ini
 [Desktop Entry]
 Name=Visual Studio Code
 Comment=Code Editing. Redefined.
 Exec=/path/to/vscode-tarball-updater/vscode_updater.py %F
-Icon=/path/to/vscode-tarball-updater/code-stable/resources/app/resources/linux/code.png
+Icon=vscode
 Terminal=false
 Type=Application
 Categories=TextEditor;Development;IDE;
