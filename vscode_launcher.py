@@ -201,7 +201,11 @@ def run_update(silent=False):
     log("Updating symlink...")
     # Atomic symlink swap
     temp_symlink = f"{SYMLINK_PATH}.tmp"
-    os.symlink(target_dir, temp_symlink)
+    
+    # Use a relative path for the symlink so the entire launcher directory is completely portable
+    relative_target = os.path.join(f"vscode-versions-{QUALITY}", folder_name)
+    os.symlink(relative_target, temp_symlink)
+    
     os.rename(temp_symlink, SYMLINK_PATH)
 
     # Cleanup downloaded tar
