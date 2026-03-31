@@ -129,31 +129,38 @@ def run_update(silent=False):
     os.makedirs(BASE_DIR, exist_ok=True)
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    log("Checking for the latest VS Code version...")
+    log(f"Checking for the latest VS Code {QUALITY} version...")
     
     # 1. Read current commit hash (if installed)
     current_commit = "0000000000000000000000000000000000000000" # Bogus hash forces latest download
     product_json_path = os.path.join(SYMLINK_PATH, "resources", "app", "product.json")
     if os.path.exists(product_json_path):
+        log(f"Reading current version from {product_json_path}")
         try:
             with open(product_json_path, "r") as f:
                 product_data = json.load(f)
                 current_commit = product_data.get("commit", current_commit)
+                log(f"Current commit: {current_commit}")
         except Exception as e:
             log(f"Warning: Could not read current version from {product_json_path}: {e}")
+    else:
+        log(f"No existing installation found at {SYMLINK_PATH}")
 
     try:
         arch = get_vscode_arch()
+        log(f"Architecture: {arch}")
     except Exception as e:
         log(f"Error: {e}")
         return
 
     api_url = f"https://update.code.visualstudio.com/api/update/linux-{arch}/{QUALITY}/{current_commit}"
+    log(f"Querying update API: {api_url}")
     
     try:
         payload, status = fetch_api(api_url)
+        log(f"API Response Status: {status}")
         if status == 204 or not payload:
-            log("VS Code is already up to date.")
+            log("VS Code is already up to date (API returned 204 No Content).")
             return
     except Exception as e:
         log(f"Failed to fetch API: {e}")
@@ -164,8 +171,10 @@ def run_update(silent=False):
     product_version = payload.get("productVersion")
     expected_sha256 = payload.get("sha256hash")
 
+    log(f"Update available! New version: {product_version} (commit: {commit_hash})")
+
     if not download_url or not commit_hash or not product_version:
-        log("Invalid API response.")
+        log(f"Invalid API response payload: {payload}")
         return
 
     # Use both product version and short commit hash for the directory name
