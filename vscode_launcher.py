@@ -281,8 +281,12 @@ if __name__ == "__main__":
         run_update(silent=False)
 
     # Spawn the background updater completely detached
+    daemon_args = [sys.executable, sys.argv[0], "--background-daemon"]
+    if is_insider:
+        daemon_args.append("--insider")
+
     subprocess.Popen(
-        [sys.executable, sys.argv[0], "--background-daemon"],
+        daemon_args,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True # Detaches the process from the current terminal/launcher
