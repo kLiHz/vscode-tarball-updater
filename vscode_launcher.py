@@ -9,14 +9,6 @@ import time
 import platform
 import hashlib
 
-# Parse CLI arguments early to configure globals
-args = sys.argv[1:]
-is_insider = "--insider" in args
-QUALITY = "insider" if is_insider else "stable"
-
-# Remove our custom arguments so they don't get passed to the real VS Code process
-launch_args = [a for a in args if a not in ("--insider", "--update-now", "--background-daemon", "--help")]
-
 # ==========================================
 # Help Message
 # ==========================================
@@ -33,11 +25,15 @@ def print_help():
 # ==========================================
 # Configuration
 # ==========================================
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.join(SCRIPT_DIR, f"vscode-versions-{QUALITY}")
-DOWNLOAD_DIR = os.path.join(SCRIPT_DIR, f"vscode-downloads-{QUALITY}")
-SYMLINK_PATH = os.path.join(SCRIPT_DIR, f"code-{QUALITY}")
-LOCK_FILE = os.path.join(SCRIPT_DIR, f".vscode-updater-{QUALITY}.lock")
+def get_config(quality):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return {
+        "base_dir": os.path.join(script_dir, f"vscode-versions-{quality}"),
+        "download_dir": os.path.join(script_dir, f"vscode-downloads-{quality}"),
+        "symlink_path": os.path.join(script_dir, f"code-{quality}"),
+        "lock_file": os.path.join(script_dir, f".vscode-updater-{quality}.lock"),
+        "quality": quality
+    }
 
 # ==========================================
 # Helper: Get Architecture
@@ -121,19 +117,24 @@ def fetch_api(url):
 # ==========================================
 # Main Update Logic
 # ==========================================
-def run_update(silent=False):
+def run_update(config, silent=False):
     def log(msg):
         if not silent:
             print(msg)
 
-    os.makedirs(BASE_DIR, exist_ok=True)
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    base_dir = config["base_dir"]
+    download_dir = config["download_dir"]
+    symlink_path = config["symlink_path"]
+    quality = config["quality"]
 
-    log(f"Checking for the latest VS Code {QUALITY} version...")
+    os.makedirs(base_dir, exist_ok=True)
+    os.makedirs(download_dir, exist_ok=True)
+
+    log(f"Checking for the latest VS Code {quality} version...")
     
     # 1. Read current commit hash (if installed)
     current_commit = "0000000000000000000000000000000000000000" # Bogus hash forces latest download
-    product_json_path = os.path.join(SYMLINK_PATH, "resources", "app", "product.json")
+    product_json_path = os.path.join(symlink_path, "resources", "app", "product.json")
     if os.path.exists(product_json_path):
         log(f"Reading current version from {product_json_path}")
         try:
@@ -144,7 +145,7 @@ def run_update(silent=False):
         except Exception as e:
             log(f"Warning: Could not read current version from {product_json_path}: {e}")
     else:
-        log(f"No existing installation found at {SYMLINK_PATH}")
+        log(f"No existing installation found at {symlink_path}")
 
     try:
         arch = get_vscode_arch()
@@ -153,7 +154,7 @@ def run_update(silent=False):
         log(f"Error: {e}")
         return
 
-    api_url = f"https://update.code.visualstudio.com/api/update/linux-{arch}/{QUALITY}/{current_commit}"
+    api_url = f"https://update.code.visualstudio.com/api/update/linux-{arch}/{quality}/{current_commit}"
     log(f"Querying update API: {api_url}")
     
     try:
@@ -180,15 +181,15 @@ def run_update(silent=False):
     # Use both product version and short commit hash for the directory name
     # to perfectly handle insider builds where product version rarely changes
     folder_name = f"vscode-{product_version}-{commit_hash[:8]}"
-    target_dir = os.path.join(BASE_DIR, folder_name)
+    target_dir = os.path.join(base_dir, folder_name)
 
     if os.path.exists(target_dir):
         log(f"VS Code version {folder_name} is already installed.")
         return
 
-    tar_file = os.path.join(DOWNLOAD_DIR, f"{folder_name}.tar.gz")
+    tar_file = os.path.join(download_dir, f"{folder_name}.tar.gz")
     
-    log(f"Downloading VS Code {QUALITY} {product_version} ({commit_hash[:8]})...")
+    log(f"Downloading VS Code {quality} {product_version} ({commit_hash[:8]})...")
     try:
         download_resumable(download_url, tar_file, silent=silent)
     except Exception as e:
@@ -202,7 +203,7 @@ def run_update(silent=False):
         return
 
     log("Extracting to versioned folder...")
-    tmp_extract = os.path.join(BASE_DIR, f".extract-{folder_name}")
+    tmp_extract = os.path.join(base_dir, f".extract-{folder_name}")
     shutil.rmtree(tmp_extract, ignore_errors=True)
     os.makedirs(tmp_extract)
 
@@ -222,25 +223,25 @@ def run_update(silent=False):
 
     log("Updating symlink...")
     # Atomic symlink swap
-    temp_symlink = f"{SYMLINK_PATH}.tmp"
+    temp_symlink = f"{symlink_path}.tmp"
     
     # Use a relative path for the symlink so the entire launcher directory is completely portable
-    relative_target = os.path.join(f"vscode-versions-{QUALITY}", folder_name)
+    relative_target = os.path.join(f"vscode-versions-{quality}", folder_name)
     os.symlink(relative_target, temp_symlink)
     
-    os.rename(temp_symlink, SYMLINK_PATH)
+    os.rename(temp_symlink, symlink_path)
 
     # Cleanup downloaded tar
     os.remove(tar_file)
     log("Update complete!")
 
     # Garbage Collection: Keep 2 most recent
-    all_versions = sorted([d for d in os.listdir(BASE_DIR) if d.startswith("vscode-")], 
-                          key=lambda d: os.path.getmtime(os.path.join(BASE_DIR, d)), 
+    all_versions = sorted([d for d in os.listdir(base_dir) if d.startswith("vscode-")], 
+                          key=lambda d: os.path.getmtime(os.path.join(base_dir, d)), 
                           reverse=True)
     
     for old_version in all_versions[2:]:
-        old_path = os.path.join(BASE_DIR, old_version)
+        old_path = os.path.join(base_dir, old_version)
         shutil.rmtree(old_path, ignore_errors=True)
 
 # ==========================================
@@ -248,6 +249,12 @@ def run_update(silent=False):
 # ==========================================
 if __name__ == "__main__":
     args = sys.argv[1:]
+    is_insider = "--insider" in args
+    quality = "insider" if is_insider else "stable"
+    config = get_config(quality)
+    
+    # Remove our custom arguments so they don't get passed to the real VS Code process
+    launch_args = [a for a in args if a not in ("--insider", "--update-now", "--background-daemon", "--help")]
 
     # 0. HELP MODE
     if "--help" in args:
@@ -256,7 +263,7 @@ if __name__ == "__main__":
 
     # 1. MANUAL OVERRIDE MODE
     if "--update-now" in args:
-        run_update(silent=False)
+        run_update(config, silent=False)
         sys.exit(0)
 
     # 2. BACKGROUND DAEMON MODE
@@ -264,21 +271,21 @@ if __name__ == "__main__":
         # Use fcntl to ensure only one daemon runs at a time (Linux/Unix only)
         try:
             import fcntl
-            lock_fd = open(LOCK_FILE, 'w')
+            lock_fd = open(config["lock_file"], 'w')
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (ImportError, OSError):
             sys.exit(0) # Lock acquired by someone else, or unsupported OS
         
         # Sleep to avoid slowing down the user's immediate application boot
         time.sleep(60)
-        run_update(silent=True)
+        run_update(config, silent=True)
         sys.exit(0)
 
     # 3. LAUNCHER MODE (Default)
     # First time installation block
-    if not os.path.exists(SYMLINK_PATH):
+    if not os.path.exists(config["symlink_path"]):
         print("First time setup: Installing VS Code...")
-        run_update(silent=False)
+        run_update(config, silent=False)
 
     # Spawn the background updater completely detached
     daemon_args = [sys.executable, sys.argv[0], "--background-daemon"]
@@ -293,8 +300,8 @@ if __name__ == "__main__":
     )
 
     # Launch the actual application and replace this Python process
-    binary_name = "code-insiders" if QUALITY == "insider" else "code"
-    binary_path = os.path.join(SYMLINK_PATH, "bin", binary_name)
+    binary_name = "code-insiders" if quality == "insider" else "code"
+    binary_path = os.path.join(config["symlink_path"], "bin", binary_name)
     if os.path.exists(binary_path):
         # os.execv replaces the current process. The Window Manager will 
         # see the Electron app taking over this PID, keeping WMClass intact.
